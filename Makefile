@@ -11,8 +11,8 @@ LIB_DIR := lib
 JS_APP = $(DIST_DIR)/app.js
 CSS_APP = $(DIST_DIR)/app.css
 
-DEPS = $(shell find $(SRC_DIR) -type f)
-DEPS += $(shell bower list --json --paths | jq -r '(.[] | select(type == "string")), (.[] | .[]?)')
+DEPS = $(shell bower list --json --paths | jq -r '(.[] | select(type == "string")), (.[] | .[]?)' | tac)
+DEPS += $(shell find $(SRC_DIR) -type f)
 
 DIST_FILES = $(DEPS:%=$(DIST_DIR)/%)
 
@@ -25,16 +25,17 @@ deps: $(LIB_DIR)
 
 $(DIST_DIR)/%.js: %.js
 	install -D $< $@
-	ng-annotate -a $< > $@
+	ng-annotate -a --single_quotes $< > $@
 
 $(DIST_DIR)/%.css: %.css
 	install -D $< $@
 
-$(DIST_DIR)/%: %
+$(DIST_DIR)/%.html: %.html
+	install -D $< $@
 
 $(DIST_DIR)/bower.json: bower.json
 	install -D $< $@
-	jq '.main |= ["app.js", "app.css"]' $@ | sponge $@
+	jq '.main |= ["app.min.js", "app.css"]' $@ | sponge $@
 	jq '.dependencies |= []' $@ | sponge $@
 
 $(DIST_DIR)/index.html: index.html bower.json $(DIST_DIR)/bower.json $(DIST_FILES) $(JS_APP) $(CSS_APP)
@@ -45,7 +46,15 @@ $(CSS_APP): $(filter %.css,$(DIST_FILES))
 	cat $(filter %.css,$(DIST_FILES)) > $@
 
 $(JS_APP): $(filter %.js,$(DIST_FILES))
-	uglifyjs -p 1 --source-map $@.map $(filter %.js,$(DIST_FILES)) -o $@
+	echo $(filter %.js,$(DIST_FILES))
+	uglifyjs \
+		--mangle \
+		--compress \
+		--source-map-root / \
+		--source-map-url $(notdir $(basename $@).min.js.map) \
+		--source-map $(basename $@).min.js.map \
+		--output $(basename $@).min.js \
+		$(filter %.js,$(DIST_FILES))
 
 $(LIB_DIR): bower.json
 	bower install
